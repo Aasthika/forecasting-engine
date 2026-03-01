@@ -3,7 +3,13 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import sys
+import os
 
+# allow import from src folder
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+from src.features import create_time_features
 
 plt.style.use("default")
 
@@ -108,3 +114,34 @@ plt.plot(df["rolling_mean_12"], label="Rolling Mean (12)", color="red")
 plt.legend()
 plt.title("Trend Inspection")
 plt.show()
+
+
+
+# ==================================================
+# FEATURE ENGINEERING
+# ==================================================
+
+print("\n===== CREATING FEATURES =====")
+
+df_features = create_time_features(df)
+
+print("\n===== FEATURE SAMPLE (TOP 15) =====")
+print(df_features.head(15))
+
+# -------------------------------
+# Drop NaNs (important)
+# -------------------------------
+df_features = df_features.dropna()
+
+print("\n===== AFTER DROPPING NaNs =====")
+print(df_features.shape)
+
+# -------------------------------
+# Save processed file
+# -------------------------------
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+output_path = os.path.join(BASE_DIR, "data", "processed_sales.csv")
+
+df_features.to_csv(output_path)
+
+print("\nSaved processed data to:", output_path)
