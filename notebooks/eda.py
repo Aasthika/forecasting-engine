@@ -1,147 +1,70 @@
 import os
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import sys
-import os
+import matplotlib.pyplot as plt
 
-# allow import from src folder
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+sys.path.append(PROJECT_ROOT)
 
+from src.data_processing import load_and_filter_data
 from src.features import create_time_features
+from src.models.baseline_models import naive_forecast, moving_average_forecast
+from src.models.arima_model import run_auto_arima
+from src.models.sarima_model import run_sarima
+from src.evaluation import evaluate_forecast
 
-plt.style.use("default")
+# =============================
+# LOAD
+# =============================
 
-# --------------------------------------------------
-# STEP 1 — Load dataset (ROBUST PATH)
-# --------------------------------------------------
+data_path = os.path.join(PROJECT_ROOT, "data", "walmart_sales.csv")
+df = load_and_filter_data(data_path)
 
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-data_path = os.path.join(BASE_DIR, "data", "walmart_sales.csv")
+# =============================
+# FEATURES
+# =============================
 
-print("Reading from:", data_path)
+df_feat = create_time_features(df).dropna()
 
-df = pd.read_csv(data_path)
+target = df_feat["Weekly_Sales"]
 
-# --------------------------------------------------
-# STEP 2 — Preview data
-# --------------------------------------------------
+train_size = int(len(target) * 0.8)
+train = target.iloc[:train_size]
+test = target.iloc[train_size:]
 
-print("\n===== HEAD =====")
-print(df.head())
+print("Train:", len(train), "Test:", len(test))
 
-print("\n===== SHAPE =====")
-print(df.shape)
+# =============================
+# BASELINES
+# =============================
 
-print("\n===== INFO =====")
-print(df.info())
+naive_pred = naive_forecast(train, test)
+ma_pred = moving_average_forecast(train, test)
 
-print("\n===== DESCRIBE =====")
-print(df.describe())
+evaluate_forecast(test, naive_pred, "Naive")
+evaluate_forecast(test, ma_pred, "Moving Average")
 
-# --------------------------------------------------
-# STEP 3 — Convert Date
-# --------------------------------------------------
+# =============================
+# ARIMA
+# =============================
 
-df["Date"] = pd.to_datetime(df["Date"])
+arima_pred = run_auto_arima(train, test)
+evaluate_forecast(test, arima_pred, "Auto ARIMA")
 
-print("\n===== DTYPES AFTER CONVERSION =====")
-print(df.dtypes)
+# =============================
+# SARIMA
+# =============================
 
-# --------------------------------------------------
-# STEP 4 — Filter single time series
-# --------------------------------------------------
+sarima_pred = run_sarima(train, test)
+evaluate_forecast(test, sarima_pred, "SARIMA")
 
-df = df[(df["Store"] == 1) & (df["Dept"] == 1)]
+# =============================
+# PLOT
+# =============================
 
-df = df.sort_values("Date")
-df = df.set_index("Date")
-
-print("\n===== AFTER FILTERING =====")
-print(df.head())
-
-print("\n===== DATE RANGE =====")
-print(df.index.min(), "to", df.index.max())
-
-print("\n===== FINAL SHAPE =====")
-print(df.shape)
-
-# --------------------------------------------------
-# STEP 5 — Plot time series
-# --------------------------------------------------
-
-plt.figure(figsize=(12,5))
-plt.plot(df["Weekly_Sales"])
-plt.title("Weekly Sales — Store 1 Dept 1")
-plt.xlabel("Date")
-plt.ylabel("Sales")
-plt.tight_layout()
-plt.show()
-
-
-print("\n===== MISSING DATE CHECK =====")
-
-full_range = pd.date_range(start=df.index.min(),
-                           end=df.index.max(),
-                           freq="W-FRI")
-
-missing_dates = full_range.difference(df.index)
-
-print("Number of missing weeks:", len(missing_dates))
-print(missing_dates[:5])
-
-print("\n===== DUPLICATE CHECK =====")
-print("Duplicate timestamps:", df.index.duplicated().sum())
-
-plt.figure(figsize=(6,4))
-sns.boxplot(x=df["Weekly_Sales"])
-plt.title("Outlier Check — Weekly Sales")
-plt.show()
-
-from statsmodels.graphics.tsaplots import plot_acf
-
-plot_acf(df["Weekly_Sales"], lags=60)
-plt.title("ACF — Seasonality Check")
-plt.show()
-
-
-df["rolling_mean_12"] = df["Weekly_Sales"].rolling(12).mean()
-
-plt.figure(figsize=(12,5))
-plt.plot(df["Weekly_Sales"], label="Actual")
-plt.plot(df["rolling_mean_12"], label="Rolling Mean (12)", color="red")
+plt.figure(figsize=(12, 5))
+plt.plot(test.index, test, label="Actual")
+plt.plot(test.index, arima_pred, label="ARIMA")
+plt.plot(test.index, sarima_pred, label="SARIMA")
 plt.legend()
-plt.title("Trend Inspection")
+plt.title("Model Comparison")
 plt.show()
-
-
-
-# ==================================================
-# FEATURE ENGINEERING
-# ==================================================
-
-print("\n===== CREATING FEATURES =====")
-
-df_features = create_time_features(df)
-
-print("\n===== FEATURE SAMPLE (TOP 15) =====")
-print(df_features.head(15))
-
-# -------------------------------
-# Drop NaNs (important)
-# -------------------------------
-df_features = df_features.dropna()
-
-print("\n===== AFTER DROPPING NaNs =====")
-print(df_features.shape)
-
-# -------------------------------
-# Save processed file
-# -------------------------------
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-output_path = os.path.join(BASE_DIR, "data", "processed_sales.csv")
-
-df_features.to_csv(output_path)
-
-print("\nSaved processed data to:", output_path)
